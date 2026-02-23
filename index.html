@@ -14,24 +14,26 @@
         .input-group input { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; outline: none; transition: 0.3s; }
         .input-group input:focus { border-color: #1a73e8; }
         
-        .btn-container { display: flex; gap: 10px; }
-        .btn { flex: 1; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; color: white; }
+        .btn-container { display: flex; gap: 10px; margin-bottom: 10px; }
+        .btn { flex: 1; padding: 15px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; transition: 0.2s; color: white; }
         .btn-plus { background-color: #34a853; }
-        .btn-plus:hover { background-color: #2d8e47; }
         .btn-minus { background-color: #ea4335; }
-        .btn-minus:hover { background-color: #d33426; }
+        .btn-update { background-color: #1a73e8; }
+        .btn-delete { background-color: #5f6368; }
+        .btn:hover { opacity: 0.8; }
         
         .status-msg { text-align: center; margin-top: 15px; padding: 10px; border-radius: 5px; font-size: 14px; display: none; }
         
         .user-list-mini { margin-top: 30px; font-size: 12px; color: #777; max-height: 150px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; }
         .user-item { cursor: pointer; padding: 5px; border-bottom: 1px solid #f9f9f9; }
         .user-item:hover { background: #f0f7ff; color: #1a73e8; }
+        hr { border: 0; border-top: 1px solid #eee; margin: 20px 0; }
     </style>
 </head>
 <body>
 
     <div class="admin-card">
-        <h2>🎁 贈り物システム</h2>
+        <h2>🎁 贈り物・アカウント管理</h2>
         
         <div class="input-group">
             <label>対象ユーザー名（ID）</label>
@@ -40,8 +42,8 @@
         </div>
 
         <div class="input-group">
-            <label>増減させるポイント数</label>
-            <input type="number" id="point-amount" placeholder="例: 100">
+            <label>数値操作 / 新しいパスワード</label>
+            <input type="text" id="action-value" placeholder="pt数 または 新パスワード">
         </div>
 
         <div class="input-group">
@@ -50,8 +52,15 @@
         </div>
 
         <div class="btn-container">
-            <button class="btn btn-plus" onclick="adjustPoints('plus')">付与する (+)</button>
-            <button class="btn btn-minus" onclick="adjustPoints('minus')">没収する (-)</button>
+            <button class="btn btn-plus" onclick="adjustPoints('plus')">付与 (+)</button>
+            <button class="btn btn-minus" onclick="adjustPoints('minus')">没収 (-)</button>
+        </div>
+
+        <hr>
+
+        <div class="btn-container">
+            <button class="btn btn-update" onclick="updateUserAccount('password')">パスワード変更</button>
+            <button class="btn btn-delete" onclick="updateUserAccount('delete')">アカウント削除</button>
         </div>
 
         <div id="status" class="status-msg"></div>
@@ -59,7 +68,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, get, update, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, get, update, increment, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCwhHspaG94goiCIjVj3h-Un5pBK3JTjMU",
@@ -75,7 +84,6 @@
 
         const ADMIN_PW = "delta437";
 
-        // ユーザー一覧の簡易表示（入力の手間を省くため）
         const loadUserSuggestions = async () => {
             const snap = await get(ref(db, 'users'));
             const container = document.getElementById('user-suggestions');
@@ -93,39 +101,54 @@
             }
         };
 
+        // ポイント調整機能
         window.adjustPoints = async (type) => {
             const user = document.getElementById('target-user').value.trim();
-            const amount = parseInt(document.getElementById('point-amount').value);
+            const amount = parseInt(document.getElementById('action-value').value);
             const pass = document.getElementById('admin-pass').value;
-            const status = document.getElementById('status');
 
-            // バリデーション
-            if (!user || isNaN(amount) || amount <= 0) {
-                return showStatus("ユーザー名と正しい数値を入力してください", "error");
-            }
-            if (pass !== ADMIN_PW) {
-                return showStatus("運営パスワードが違います", "error");
-            }
+            if (!user || isNaN(amount) || amount <= 0) return showStatus("ユーザー名と正しい数値を入力してください", "error");
+            if (pass !== ADMIN_PW) return showStatus("運営パスワードが違います", "error");
 
             try {
                 const userRef = ref(db, `users/${user}`);
                 const snap = await get(userRef);
-                
-                if (!snap.exists()) {
-                    return showStatus("指定されたユーザーが見つかりません", "error");
-                }
+                if (!snap.exists()) return showStatus("ユーザーが見つかりません", "error");
 
-                // 数値の計算
                 const finalChange = (type === 'plus') ? amount : -amount;
-                
-                await update(userRef, {
-                    score: increment(finalChange)
-                });
-
+                await update(userRef, { score: increment(finalChange) });
                 showStatus(`${user}さんに ${finalChange}pt 反映しました！`, "success");
-                document.getElementById('point-amount').value = "";
             } catch (e) {
-                showStatus("エラーが発生しました: " + e.message, "error");
+                showStatus("エラー: " + e.message, "error");
+            }
+        };
+
+        // アカウント管理機能 (パスワード変更・削除)
+        window.updateUserAccount = async (action) => {
+            const user = document.getElementById('target-user').value.trim();
+            const val = document.getElementById('action-value').value.trim();
+            const pass = document.getElementById('admin-pass').value;
+
+            if (!user) return showStatus("ユーザー名を選択してください", "error");
+            if (pass !== ADMIN_PW) return showStatus("運営パスワードが違います", "error");
+
+            try {
+                const userRef = ref(db, `users/${user}`);
+                const snap = await get(userRef);
+                if (!snap.exists()) return showStatus("ユーザーが見つかりません", "error");
+
+                if (action === 'password') {
+                    if (!val) return showStatus("新しいパスワードを入力してください", "error");
+                    await update(userRef, { password: val }); // 'password'キーに保存
+                    showStatus(`${user}さんのパスワードを更新しました`, "success");
+                } else if (action === 'delete') {
+                    if (!confirm(`${user}のアカウントを完全に削除しますか？`)) return;
+                    await remove(userRef);
+                    showStatus(`${user}のアカウントを削除しました`, "success");
+                    loadUserSuggestions(); // リストを再読み込み
+                }
+            } catch (e) {
+                showStatus("エラー: " + e.message, "error");
             }
         };
 
