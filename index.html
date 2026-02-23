@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>運営専用 | 贈り物システム</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #333; }
+        .admin-card { max-width: 500px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #1a73e8; border-bottom: 2px solid #e8f0fe; padding-bottom: 10px; }
+        
+        .input-group { margin-bottom: 20px; }
+        .input-group label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 8px; color: #555; }
+        .input-group input { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; outline: none; transition: 0.3s; }
+        .input-group input:focus { border-color: #1a73e8; }
+        
+        .btn-container { display: flex; gap: 10px; }
+        .btn { flex: 1; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; color: white; }
+        .btn-plus { background-color: #34a853; }
+        .btn-plus:hover { background-color: #2d8e47; }
+        .btn-minus { background-color: #ea4335; }
+        .btn-minus:hover { background-color: #d33426; }
+        
+        .status-msg { text-align: center; margin-top: 15px; padding: 10px; border-radius: 5px; font-size: 14px; display: none; }
+        
+        .user-list-mini { margin-top: 30px; font-size: 12px; color: #777; max-height: 150px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; }
+        .user-item { cursor: pointer; padding: 5px; border-bottom: 1px solid #f9f9f9; }
+        .user-item:hover { background: #f0f7ff; color: #1a73e8; }
+    </style>
+</head>
+<body>
+
+    <div class="admin-card">
+        <h2>🎁 贈り物システム</h2>
+        
+        <div class="input-group">
+            <label>対象ユーザー名（ID）</label>
+            <input type="text" id="target-user" placeholder="例: 田中太郎">
+            <div id="user-suggestions" class="user-list-mini">ユーザー読み込み中...</div>
+        </div>
+
+        <div class="input-group">
+            <label>増減させるポイント数</label>
+            <input type="number" id="point-amount" placeholder="例: 100">
+        </div>
+
+        <div class="input-group">
+            <label>運営パスワード</label>
+            <input type="password" id="admin-pass" placeholder="運営用パスを入力">
+        </div>
+
+        <div class="btn-container">
+            <button class="btn btn-plus" onclick="adjustPoints('plus')">付与する (+)</button>
+            <button class="btn btn-minus" onclick="adjustPoints('minus')">没収する (-)</button>
+        </div>
+
+        <div id="status" class="status-msg"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, get, update, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCwhHspaG94goiCIjVj3h-Un5pBK3JTjMU",
+            authDomain: "soulkin-aa3b7.firebaseapp.com",
+            databaseURL: "https://soulkin-aa3b7-default-rtdb.firebaseio.com",
+            projectId: "soulkin-aa3b7",
+            storageBucket: "soulkin-aa3b7.firebasestorage.app",
+            messagingSenderId: "358331064206",
+            appId: "1:358331064206:web:d7760ea0919259418a4edf"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const ADMIN_PW = "delta437";
+
+        // ユーザー一覧の簡易表示（入力の手間を省くため）
+        const loadUserSuggestions = async () => {
+            const snap = await get(ref(db, 'users'));
+            const container = document.getElementById('user-suggestions');
+            if(snap.exists()) {
+                container.innerHTML = "<b>クリックで選択:</b><br>";
+                Object.keys(snap.val()).forEach(name => {
+                    const div = document.createElement('div');
+                    div.className = 'user-item';
+                    div.innerText = name;
+                    div.onclick = () => document.getElementById('target-user').value = name;
+                    container.appendChild(div);
+                });
+            } else {
+                container.innerText = "ユーザーがいません。";
+            }
+        };
+
+        window.adjustPoints = async (type) => {
+            const user = document.getElementById('target-user').value.trim();
+            const amount = parseInt(document.getElementById('point-amount').value);
+            const pass = document.getElementById('admin-pass').value;
+            const status = document.getElementById('status');
+
+            // バリデーション
+            if (!user || isNaN(amount) || amount <= 0) {
+                return showStatus("ユーザー名と正しい数値を入力してください", "error");
+            }
+            if (pass !== ADMIN_PW) {
+                return showStatus("運営パスワードが違います", "error");
+            }
+
+            try {
+                const userRef = ref(db, `users/${user}`);
+                const snap = await get(userRef);
+                
+                if (!snap.exists()) {
+                    return showStatus("指定されたユーザーが見つかりません", "error");
+                }
+
+                // 数値の計算
+                const finalChange = (type === 'plus') ? amount : -amount;
+                
+                await update(userRef, {
+                    score: increment(finalChange)
+                });
+
+                showStatus(`${user}さんに ${finalChange}pt 反映しました！`, "success");
+                document.getElementById('point-amount').value = "";
+            } catch (e) {
+                showStatus("エラーが発生しました: " + e.message, "error");
+            }
+        };
+
+        const showStatus = (msg, type) => {
+            const status = document.getElementById('status');
+            status.style.display = 'block';
+            status.innerText = msg;
+            status.style.backgroundColor = (type === 'success') ? '#e6ffed' : '#fff0f0';
+            status.style.color = (type === 'success') ? '#22863a' : '#cb2431';
+        };
+
+        window.onload = loadUserSuggestions;
+    </script>
+</body>
+</html>
