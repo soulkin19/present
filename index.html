@@ -1,1 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ユーザーポータル v7.6</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 0; color: #333; }
+        #auth-container, #profile-view, #app-container { display: none; max-width: 500px; margin: 30px auto; background: #fff; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; }
+        #app-container { max-width: 100%; margin: 0; border-radius: 0; min-height: 100vh; display: none; flex-direction: column; }
+        .hidden { display: none !important; }
+        .tab-menu { display: flex; background: #eee; }
+        .tab-menu div { flex: 1; text-align: center; padding: 15px 0; cursor: pointer; font-weight: bold; color: #888; }
+        .tab-menu div.active { background: #fff; color: #2196F3; border-bottom: 3px solid #2196F3; }
+        .form-area { padding: 30px; position: relative; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 12px; margin-bottom: 5px; color: #666; font-weight: bold; }
+        .input-group input, .input-group textarea { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        .action-btn { width: 100%; padding: 12px; background: #2196F3; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        header { background: #2c3e50; color: #fff; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+        .hamburger-btn { font-size: 24px; cursor: pointer; }
+        #sidebar { position: fixed; top: 0; left: -300px; width: 280px; height: 100%; background: #fff; box-shadow: 2px 0 10px rgba(0,0,0,0.2); transition: 0.3s ease; z-index: 1000; padding: 20px; box-sizing: border-box; overflow-y: auto; }
+        #sidebar.open { left: 0; }
+        .sidebar-close { text-align: right; font-size: 24px; cursor: pointer; color: #999; margin-bottom: 10px; }
+        .nav-item { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .user-icon { width: 80px; height: 80px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 40px; margin: 0 auto 10px; overflow: hidden; border: 2px solid #2196F3; position: relative; }
+        .user-icon img { width: 100%; height: 100%; object-fit: cover; }
+        .user-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; padding: 15px; }
+        .user-card { background: #fff; padding: 15px; border-radius: 10px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; }
+        .rank-item { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; background: #fff; }
+        .rank-num { font-size: 22px; font-weight: bold; color: #FF9800; width: 45px; text-align: center; flex-shrink: 0; }
+        .rank-info { flex-grow: 1; padding-left: 10px; text-align: left; }
+        .banned-msg { color: #f44336; font-weight: bold; background: #ffebee; padding: 25px 15px; border-radius: 8px; margin: 20px 0; }
+        .stats { display: flex; justify-content: space-around; margin-bottom: 15px; }
+        #admin-link { position: absolute; top: 10px; right: 10px; color: #e74c3c; font-size: 12px; cursor: pointer; font-weight: bold; border: 1px solid #e74c3c; padding: 4px 8px; border-radius: 4px; display: none; z-index: 1001; background: white; }
+    </style>
+</head>
+<body>
 
+    <div id="profile-view">
+        <div class="form-area" style="text-align:center;">
+            <div id="admin-link">管理</div>
+            <div id="view-normal-content">
+                <div class="user-icon" id="view-icon">👤</div>
+                <h2 id="view-name">ユーザー名</h2>
+                <div id="view-bio" style="background:#f0f4f8; padding:15px; border-radius:10px; text-align:left; font-size:14px; margin:15px 0; min-height:40px;"></div>
+                <div class="stats">
+                    <div>💰 <b id="view-score">0</b></div>
+                    <div>👥 <b id="view-followers">0</b></div>
+                </div>
+                <div style="display: flex; justify-content: center; gap: 5px; margin-bottom: 15px;">
+                    <input type="number" id="tip-amount" placeholder="数" style="width: 70px; padding: 10px; border: 1px solid #ccc; border-radius: 5px;">
+                    <button id="btn-tip" class="action-btn" style="background:#FF9800; width: auto; padding: 10px 20px;">pt 送る</button>
+                </div>
+            </div>
+            <div id="view-banned-content" class="banned-msg" style="display:none;">
+                <div style="font-size: 1.2em; margin-bottom: 10px;" id="banned-user-name"></div>
+                この人はアクセス禁止されています
+            </div>
+            <a href="#" style="display:block; color:#2196F3;" onclick="location.hash=''; location.reload();">閉じる</a>
+        </div>
+    </div>
+
+    <div id="auth-container">
+        <div class="tab-menu">
+            <div id="tab-login" class="active" onclick="switchTab('login')">ログイン</div>
+            <div id="tab-register" onclick="switchTab('register')">新規作成</div>
+        </div>
+        <div id="form-login" class="form-area">
+            <div class="input-group"><label>ユーザー名</label><input type="text" id="login-username"></div>
+            <div class="input-group"><label>パスワード</label><input type="password" id="login-password"></div>
+            <button class="action-btn" id="btn-do-login">ログイン</button>
+        </div>
+        <div id="form-register" class="form-area hidden">
+            <div class="input-group"><label>ユーザー名</label><input type="text" id="reg-username"></div>
+            <div class="input-group"><label>パスワード</label><input type="password" id="reg-password"></div>
+            <button class="action-btn" id="btn-do-register" style="background:#34495e;">登録完了</button>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <header>
+            <div class="hamburger-btn" onclick="toggleSidebar()">☰</div>
+            <div id="page-title">ホーム</div>
+            <div style="width:24px;"></div>
+        </header>
+
+        <nav id="sidebar">
+            <div class="sidebar-close" onclick="toggleSidebar()">×</div>
+            <div class="user-icon" id="side-icon" style="border:none;">👤</div>
+            <div id="disp-name" style="text-align:center; font-weight:bold; margin-bottom:20px;"></div>
+            <div class="nav-item" onclick="showSection('home')">🏠 ホーム</div>
+            <div class="nav-item" onclick="window.open('https://soulkin19.github.io/soulch/', '_blank')">💬 掲示板へ行く</div>
+            <div class="nav-item" onclick="showSection('members')">👥 ユーザー一覧</div>
+            <div class="nav-item" onclick="showSection('ranking')">🏆 ランキング</div>
+            <div class="nav-item" onclick="showSection('settings')">⚙️ プロフ設定</div>
+            <button id="btn-logout" style="width:100%; padding:10px; background:#eee; border:none; border-radius:5px; margin-top:30px;">ログアウト</button>
+        </nav>
+
+        <main id="section-home" class="form-area" style="text-align:center;">
+            <h1>おかえりなさい！</h1>
+            <button class="action-btn" onclick="window.open('https://soulkin19.github.io/soulch/', '_blank')" style="background:#673AB7; margin-bottom:20px;">💬 掲示板を開く</button>
+            <div class="stats"><div>所持ポイント<br><b id="home-score" style="font-size:24px;">0</b></div></div>
+            <p style="font-size:11px; color:#999; margin-top:20px;">あなたのURL:<br><code id="share-url"></code></p>
+        </main>
+
+        <main id="section-members" class="hidden">
+            <div style="padding:15px;">
+                <input type="text" id="user-search" placeholder="ユーザー名を検索..." style="width:100%; padding:12px; border-radius:25px; border:1px solid #ddd; outline:none; box-sizing:border-box; font-size:16px;">
+            </div>
+            <div id="user-list-area" class="user-list"></div>
+        </main>
+
+        <main id="section-ranking" class="hidden">
+            <div class="tab-menu">
+                <div id="tab-rank-score" class="active" onclick="toggleRank('score')">ポイント</div>
+                <div id="tab-rank-follow" onclick="toggleRank('follow')">フォロワー</div>
+            </div>
+            <div id="rank-list-area"></div>
+        </main>
+
+        <main id="section-settings" class="hidden form-area">
+            <h3>プロフ設定</h3>
+            <div class="user-icon" id="settings-icon-disp" onclick="changeIcon()" style="cursor:pointer;">👤</div>
+            <div class="input-group"><label>自己紹介</label><textarea id="settings-bio-input" rows="4"></textarea></div>
+            <button class="action-btn" onclick="saveBio()">保存</button>
+        </main>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, get, child, update, increment, push, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCwhHspaG94goiCIjVj3h-Un5pBK3JTjMU",
+            authDomain: "soulkin-aa3b7.firebaseapp.com",
+            databaseURL: "https://soulkin-aa3b7-default-rtdb.firebaseio.com",
+            projectId: "soulkin-aa3b7",
+            storageBucket: "soulkin-aa3b7.firebasestorage.app",
+            messagingSenderId: "358331064206",
+            appId: "1:358331064206:web:d7760ea0919259418a4edf"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const me = localStorage.getItem("loginnow");
+        let allUsersData = {}; // 検索用にデータを保持
+
+        const isBlacklisted = async (userId) => {
+            if(!userId) return false;
+            const snap = await get(child(ref(db), `blacklist/${userId}`));
+            return snap.exists();
+        };
+
+        window.showSection = (name) => {
+            ['home', 'members', 'ranking', 'settings'].forEach(s => {
+                document.getElementById(`section-${s}`).classList.toggle('hidden', s !== name);
+            });
+            document.getElementById('sidebar').classList.remove('open');
+            if(name === 'members') loadUserList();
+            if(name === 'ranking') toggleRank('score');
+        };
+
+        // 検索機能付きのユーザーリスト読み込み
+        const loadUserList = async () => {
+            const snap = await get(ref(db, 'users'));
+            const blackSnap = await get(ref(db, 'blacklist'));
+            const blacklistedUsers = blackSnap.exists() ? Object.keys(blackSnap.val()) : [];
+            
+            if(snap.exists()) {
+                allUsersData = snap.val();
+                renderUserList("", blacklistedUsers); // 初期表示
+            }
+        };
+
+        const renderUserList = (keyword, blacklist) => {
+            const area = document.getElementById('user-list-area');
+            area.innerHTML = "";
+            Object.entries(allUsersData).forEach(([name, d]) => {
+                if (blacklist.includes(name)) return;
+                if (keyword && !name.toLowerCase().includes(keyword.toLowerCase())) return;
+
+                const card = document.createElement('div');
+                card.className = 'user-card';
+                card.innerHTML = `<div class="user-icon">${d.icon ? `<img src="${d.icon}">` : '👤'}</div><div style="font-size:12px; font-weight:bold;">${name}</div>`;
+                card.onclick = () => { location.hash = name; location.reload(); };
+                area.appendChild(card);
+            });
+        };
+
+        // 検索窓の入力イベント
+        document.getElementById('user-search').oninput = async (e) => {
+            const blackSnap = await get(ref(db, 'blacklist'));
+            const blacklistedUsers = blackSnap.exists() ? Object.keys(blackSnap.val()) : [];
+            renderUserList(e.target.value, blacklistedUsers);
+        };
+
+        window.toggleRank = async (type) => {
+            document.getElementById('tab-rank-score').classList.toggle('active', type === 'score');
+            document.getElementById('tab-rank-follow').classList.toggle('active', type === 'follow');
+            const snap = await get(ref(db, 'users'));
+            const blackSnap = await get(ref(db, 'blacklist'));
+            const blacklistedUsers = blackSnap.exists() ? Object.keys(blackSnap.val()) : [];
+            const area = document.getElementById('rank-list-area');
+            area.innerHTML = "";
+
+            if(snap.exists()){
+                const users = Object.entries(snap.val()).filter(([name]) => !blacklistedUsers.includes(name));
+                const sorted = users.sort((a, b) => {
+                    if(type === 'score') return (b[1].score || 0) - (a[1].score || 0);
+                    const af = a[1].followers ? Object.keys(a[1].followers).length : 0;
+                    const bf = b[1].followers ? Object.keys(b[1].followers).length : 0;
+                    return bf - af;
+                }).slice(0, 10);
+
+                sorted.forEach(([name, d], i) => {
+                    const val = type === 'score' ? (d.score || 0) + " pt" : (d.followers ? Object.keys(d.followers).length : 0) + " followers";
+                    area.innerHTML += `
+                        <div class="rank-item">
+                            <div class="rank-num">${i+1}</div>
+                            <div class="user-icon" style="width:45px;height:45px;margin:0;">${d.icon ? `<img src="${d.icon}">` : '👤'}</div>
+                            <div class="rank-info"><b>${name}</b><br><small>${val}</small></div>
+                        </div>`;
+                });
+            }
+        };
+
+        const handleAdmin = async (target) => {
+            const pass = prompt("管理者パスワードを入力してください");
+            if (pass !== "delta437") return alert("パスワードが違います");
+            const banned = await isBlacklisted(target);
+            const action = banned ? "解除" : "バン";
+            if (confirm(`${target} を${action}しますか？`)) {
+                if (banned) await remove(ref(db, `blacklist/${target}`));
+                else await set(ref(db, `blacklist/${target}`), true);
+                location.reload();
+            }
+        };
+
+        const init = async () => {
+            const hash = decodeURIComponent(window.location.hash.substring(1));
+            if (hash) {
+                document.getElementById('profile-view').style.display = 'block';
+                if (me === "運営スタッフ") {
+                    const btn = document.getElementById('admin-link');
+                    btn.style.display = 'block';
+                    btn.onclick = () => handleAdmin(hash);
+                }
+                const banned = await isBlacklisted(hash);
+                if (banned) {
+                    document.getElementById('view-normal-content').style.display = 'none';
+                    document.getElementById('view-banned-content').style.display = 'block';
+                    document.getElementById('banned-user-name').innerText = hash;
+                } else {
+                    const snap = await get(child(ref(db), `users/${hash}`));
+                    if (snap.exists()) {
+                        const d = snap.val();
+                        document.getElementById('view-name').innerText = hash;
+                        document.getElementById('view-bio').innerText = d.bio || "";
+                        document.getElementById('view-score').innerText = d.score || 0;
+                        document.getElementById('view-followers').innerText = d.followers ? Object.keys(d.followers).length : 0;
+                        if(d.icon) document.getElementById('view-icon').innerHTML = `<img src="${d.icon}">`;
+                    }
+                }
+                return;
+            }
+            if (me) {
+                if (await isBlacklisted(me)) {
+                    alert("凍結中"); localStorage.removeItem("loginnow"); location.reload(); return;
+                }
+                const snap = await get(child(ref(db), `users/${me}`));
+                if (snap.exists()) {
+                    document.getElementById('app-container').style.display = 'flex';
+                    document.getElementById('disp-name').innerText = me;
+                    document.getElementById('home-score').innerText = snap.val().score || 0;
+                    document.getElementById('share-url').innerText = `https://soulkin19.github.io/login/#${me}`;
+                    if(snap.val().icon) document.getElementById('side-icon').innerHTML = `<img src="${snap.val().icon}">`;
+                }
+            } else { document.getElementById('auth-container').style.display = 'block'; }
+        };
+
+        document.getElementById('btn-do-login').onclick = async () => {
+            const id = document.getElementById('login-username').value.trim();
+            const pw = document.getElementById('login-password').value.trim();
+            if (await isBlacklisted(id)) return alert("凍結されています");
+            const snap = await get(child(ref(db), `users/${id}`));
+            if(snap.exists() && snap.val().password === pw) {
+                localStorage.setItem("loginnow", id); location.reload();
+            } else alert("間違い");
+        };
+
+        document.getElementById('btn-do-register').onclick = async () => {
+            const lastReg = localStorage.getItem("last_reg_time");
+            if (lastReg && (Date.now() - lastReg < 300000)) return alert("5分間は作成できません");
+            const id = document.getElementById('reg-username').value.trim();
+            const pw = document.getElementById('reg-password').value.trim();
+            if (await isBlacklisted(id)) return alert("禁止名");
+            const check = await get(child(ref(db), `users/${id}`));
+            if(check.exists()) return alert("存在します");
+            await set(ref(db, 'users/'+id), { password:pw, score:0, bio:"" });
+            localStorage.setItem("last_reg_time", Date.now());
+            localStorage.setItem("loginnow", id);
+            location.reload();
+        };
+
+        window.switchTab = (t) => {
+            document.getElementById('form-login').classList.toggle('hidden', t!=='login');
+            document.getElementById('form-register').classList.toggle('hidden', t!=='register');
+            document.getElementById('tab-login').classList.toggle('active', t==='login');
+            document.getElementById('tab-register').classList.toggle('active', t==='register');
+        };
+        window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('btn-logout').onclick = () => { localStorage.removeItem("loginnow"); location.hash=""; location.reload(); };
+
+        init();
+    </script>
+</body>
+</html>
